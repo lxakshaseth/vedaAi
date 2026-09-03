@@ -139,7 +139,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         <div className="max-h-80 overflow-y-auto p-2 space-y-1">
           {filteredActions.length === 0 ? (
             <div className="py-8 text-center text-xs text-slate-400">
-              No matching actions found for "{query}"
+              No matching actions found for &ldquo;{query}&rdquo;
             </div>
           ) : (
             filteredActions.map((item) => (

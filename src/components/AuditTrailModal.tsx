@@ -69,7 +69,7 @@ export const AuditTrailModal: React.FC<AuditTrailModalProps> = ({ isOpen, onClos
                         {rec.changedBy}
                       </span>
                     </div>
-                    <p className="text-slate-500 italic">"{rec.reason}"</p>
+                    <p className="text-slate-500 italic">&ldquo;{rec.reason}&rdquo;</p>
                     <p className="text-[10px] text-slate-400">{new Date(rec.timestamp).toLocaleString()}</p>
                   </div>
                   <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border border-slate-200">
