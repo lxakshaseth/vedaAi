@@ -1,4 +1,4 @@
-import { AssessmentResult } from '@/types/assessment';
+import { AssessmentResult, GradedQuestion } from '@/types/assessment';
 
 export interface ClassStatistics {
   count: number;
@@ -18,7 +18,7 @@ export interface ClassStatistics {
 }
 
 export interface QuestionMasteryStats {
-  questionNumber: number;
+  questionLabel: string;
   questionText: string;
   averageScore: number;
   maxMarks: number;
@@ -44,7 +44,7 @@ export function calculateClassStatistics(assessments: AssessmentResult[]): Class
     };
   }
 
-  const scores = assessments.map((a) => a.totalScore ?? 0).sort((a, b) => a - b);
+  const scores = assessments.map((a) => a.summary?.totalScore ?? 0).sort((a, b) => a - b);
   const count = scores.length;
   const sum = scores.reduce((acc, val) => acc + val, 0);
   const meanScore = sum / count;
@@ -62,8 +62,9 @@ export function calculateClassStatistics(assessments: AssessmentResult[]): Class
   let passingCount = 0;
 
   assessments.forEach((a) => {
-    const max = a.maxScore || 100;
-    const pct = (a.totalScore / max) * 100;
+    const max = a.summary?.maxScore || 100;
+    const total = a.summary?.totalScore ?? 0;
+    const pct = max > 0 ? (total / max) * 100 : 0;
     if (pct >= 90) gradeDistribution.A++;
     else if (pct >= 80) gradeDistribution.B++;
     else if (pct >= 70) gradeDistribution.C++;
@@ -77,8 +78,8 @@ export function calculateClassStatistics(assessments: AssessmentResult[]): Class
     count,
     meanScore: Number(meanScore.toFixed(2)),
     medianScore: Number(medianScore.toFixed(2)),
-    minScore: scores[0],
-    maxScore: scores[scores.length - 1],
+    minScore: scores[0] || 0,
+    maxScore: scores[scores.length - 1] || 0,
     standardDeviation: Number(standardDeviation.toFixed(2)),
     passRate: Number(((passingCount / count) * 100).toFixed(1)),
     gradeDistribution,
@@ -92,7 +93,8 @@ export function calculateQuestionMastery(assessments: AssessmentResult[]): Quest
   if (!assessments || assessments.length === 0) return [];
 
   const questionMap: {
-    [qNum: number]: {
+    [qId: string]: {
+      label: string;
       text: string;
       scores: number[];
       maxMarks: number;
@@ -101,24 +103,25 @@ export function calculateQuestionMastery(assessments: AssessmentResult[]): Quest
   } = {};
 
   assessments.forEach((a) => {
-    (a.questions || []).forEach((q) => {
-      if (!questionMap[q.questionNumber]) {
-        questionMap[q.questionNumber] = {
-          text: q.questionText || `Question ${q.questionNumber}`,
+    (a.questions || []).forEach((q: GradedQuestion) => {
+      const qKey = q.question.id || q.question.fullLabel || q.question.numberLabel;
+      if (!questionMap[qKey]) {
+        questionMap[qKey] = {
+          label: q.question.fullLabel || `Q${q.question.numberLabel}`,
+          text: q.question.text || '',
           scores: [],
-          maxMarks: q.maxMarks || 1,
+          maxMarks: q.question.maxMarks || 1,
           feedbacks: [],
         };
       }
-      questionMap[q.questionNumber].scores.push(q.awardedMarks || 0);
+      questionMap[qKey].scores.push(q.marksAwarded || 0);
       if (q.feedback) {
-        questionMap[q.questionNumber].feedbacks.push(q.feedback);
+        questionMap[qKey].feedbacks.push(q.feedback);
       }
     });
   });
 
-  return Object.entries(questionMap).map(([numStr, data]) => {
-    const qNum = Number(numStr);
+  return Object.values(questionMap).map((data) => {
     const avg = data.scores.reduce((a, b) => a + b, 0) / (data.scores.length || 1);
     const pct = (avg / (data.maxMarks || 1)) * 100;
 
@@ -127,7 +130,7 @@ export function calculateQuestionMastery(assessments: AssessmentResult[]): Quest
     else if (pct < 60) difficultyCategory = 'Challenging';
 
     return {
-      questionNumber: qNum,
+      questionLabel: data.label,
       questionText: data.text,
       averageScore: Number(avg.toFixed(2)),
       maxMarks: data.maxMarks,

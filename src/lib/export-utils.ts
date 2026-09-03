@@ -1,18 +1,4 @@
-import { AssessmentResult, QuestionResult } from '@/types/assessment';
-
-export interface StudentReportData {
-  studentName: string;
-  studentId: string;
-  assignmentTitle: string;
-  subject: string;
-  date: string;
-  totalScore: number;
-  maxScore: number;
-  percentage: number;
-  letterGrade: string;
-  questions: QuestionResult[];
-  teacherNotes?: string;
-}
+import { AssessmentResult, GradedQuestion } from '@/types/assessment';
 
 /**
  * Calculates letter grade based on percentage score
@@ -46,21 +32,21 @@ export function exportToGradebookCSV(assessments: AssessmentResult[]): string {
   ];
 
   const rows = assessments.map((assessment) => {
-    const totalScore = assessment.totalScore ?? 0;
-    const maxScore = assessment.maxScore ?? 100;
-    const percentage = maxScore > 0 ? ((totalScore / maxScore) * 100).toFixed(1) : '0';
-    const letterGrade = calculateLetterGrade(Number(percentage));
-    const studentName = assessment.studentName || 'Unknown Student';
-    const studentId = assessment.studentId || 'N/A';
+    const totalScore = assessment.summary?.totalScore ?? 0;
+    const maxScore = assessment.summary?.maxScore ?? 100;
+    const percentage = assessment.summary?.percentage ?? (maxScore > 0 ? (totalScore / maxScore) * 100 : 0);
+    const letterGrade = assessment.summary?.grade || calculateLetterGrade(percentage);
+    const studentName = (assessment as any).studentName || 'Student';
+    const studentId = (assessment as any).studentId || 'N/A';
     const questionsCount = assessment.questions?.length ?? 0;
-    const completedAt = assessment.createdAt || new Date().toISOString();
+    const completedAt = (assessment as any).createdAt || new Date().toISOString();
 
     return [
       `"${studentName.replace(/"/g, '""')}"`,
       `"${studentId}"`,
       totalScore,
       maxScore,
-      percentage,
+      percentage.toFixed(1),
       letterGrade,
       questionsCount,
       `"${completedAt}"`,
@@ -75,27 +61,30 @@ export function exportToGradebookCSV(assessments: AssessmentResult[]): string {
  */
 export function exportQuestionAnalysisCSV(assessment: AssessmentResult): string {
   const headers = [
-    'Question Number',
+    'Question Label',
     'Question Text',
     'Awarded Marks',
     'Max Marks',
     'Accuracy (%)',
+    'Status',
     'Feedback / Rubric Match',
   ];
 
-  const rows = (assessment.questions || []).map((q) => {
-    const awarded = q.awardedMarks ?? 0;
-    const max = q.maxMarks ?? 1;
+  const rows = (assessment.questions || []).map((q: GradedQuestion) => {
+    const awarded = q.marksAwarded ?? 0;
+    const max = q.question?.maxMarks ?? 1;
     const accuracy = max > 0 ? ((awarded / max) * 100).toFixed(1) : '0';
     const feedback = (q.feedback || '').replace(/"/g, '""');
-    const text = (q.questionText || `Question ${q.questionNumber}`).replace(/"/g, '""');
+    const label = q.question?.fullLabel || q.question?.numberLabel || 'Q';
+    const text = (q.question?.text || '').replace(/"/g, '""');
 
     return [
-      `"${q.questionNumber}"`,
+      `"${label}"`,
       `"${text}"`,
       awarded,
       max,
       accuracy,
+      `"${q.status}"`,
       `"${feedback}"`,
     ].join(',');
   });
@@ -123,19 +112,22 @@ export function downloadFile(content: string, fileName: string, contentType: str
  * Generates a clean HTML transcript for printing or saving as PDF
  */
 export function generatePrintableReportHTML(assessment: AssessmentResult): string {
-  const percentage = assessment.maxScore ? ((assessment.totalScore / assessment.maxScore) * 100).toFixed(1) : '0';
-  const letterGrade = calculateLetterGrade(Number(percentage));
+  const totalScore = assessment.summary?.totalScore ?? 0;
+  const maxScore = assessment.summary?.maxScore ?? 100;
+  const percentage = assessment.summary?.percentage ?? (maxScore > 0 ? (totalScore / maxScore) * 100 : 0);
+  const letterGrade = assessment.summary?.grade || calculateLetterGrade(percentage);
+  const studentName = (assessment as any).studentName || 'Student';
 
   const questionsHTML = (assessment.questions || [])
     .map(
       (q) => `
     <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px; margin-bottom: 12px;">
       <div style="display: flex; justify-content: space-between; font-weight: 600; color: #1e293b; margin-bottom: 6px;">
-        <span>Question ${q.questionNumber}: ${q.questionText || ''}</span>
-        <span style="color: #4f46e5;">${q.awardedMarks} / ${q.maxMarks} marks</span>
+        <span>${q.question?.fullLabel || 'Question'}: ${q.question?.text || ''}</span>
+        <span style="color: #4f46e5;">${q.marksAwarded} / ${q.question?.maxMarks || 0} marks</span>
       </div>
       <div style="background: #f8fafc; padding: 10px; border-radius: 6px; font-size: 13px; color: #475569; margin-top: 8px;">
-        <strong>Student Answer:</strong> ${q.studentAnswer || '<em>No answer provided</em>'}
+        <strong>Student Answer:</strong> ${q.studentAnswerText || '<em>No answer provided</em>'}
       </div>
       <div style="margin-top: 8px; font-size: 13px; color: #334155;">
         <strong>Feedback:</strong> ${q.feedback || 'Evaluated standard response.'}
@@ -149,7 +141,7 @@ export function generatePrintableReportHTML(assessment: AssessmentResult): strin
     <!DOCTYPE html>
     <html>
       <head>
-        <title>Assessment Report - ${assessment.studentName || 'Student'}</title>
+        <title>Assessment Report - ${studentName}</title>
         <style>
           body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.5; color: #0f172a; padding: 24px; max-width: 800px; margin: 0 auto; }
           .header { border-bottom: 2px solid #e2e8f0; padding-bottom: 16px; margin-bottom: 20px; }
@@ -163,17 +155,17 @@ export function generatePrintableReportHTML(assessment: AssessmentResult): strin
       <body>
         <div class="header">
           <span class="badge">Veda AI Evaluation Report</span>
-          <h1 style="margin: 8px 0 4px 0; font-size: 24px;">${assessment.studentName || 'Student Assessment'}</h1>
+          <h1 style="margin: 8px 0 4px 0; font-size: 24px;">${studentName}</h1>
           <p style="color: #64748b; margin: 0; font-size: 14px;">Evaluated on ${new Date().toLocaleDateString()}</p>
         </div>
 
         <div class="stats-grid">
           <div class="stat-box">
-            <div class="stat-value">${assessment.totalScore} / ${assessment.maxScore}</div>
+            <div class="stat-value">${totalScore} / ${maxScore}</div>
             <div class="stat-label">Total Score</div>
           </div>
           <div class="stat-box">
-            <div class="stat-value">${percentage}%</div>
+            <div class="stat-value">${percentage.toFixed(1)}%</div>
             <div class="stat-label">Percentage</div>
           </div>
           <div class="stat-box">

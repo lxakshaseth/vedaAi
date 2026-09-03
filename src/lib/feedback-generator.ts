@@ -1,4 +1,4 @@
-import { AssessmentResult, QuestionResult } from '@/types/assessment';
+import { AssessmentResult, GradedQuestion } from '@/types/assessment';
 
 export interface PersonalizedStudyPlan {
   summaryPraise: string;
@@ -23,18 +23,24 @@ const MOTIVATIONAL_QUOTES = [
  * Generates personalized, constructive student feedback and remedial action items
  */
 export function generateStudentStudyPlan(assessment: AssessmentResult): PersonalizedStudyPlan {
-  const questions: QuestionResult[] = assessment.questions || [];
-  const totalAwarded = assessment.totalScore ?? 0;
-  const maxScore = assessment.maxScore ?? 100;
+  const questions: GradedQuestion[] = assessment.questions || [];
+  const totalAwarded = assessment.summary?.totalScore ?? 0;
+  const maxScore = assessment.summary?.maxScore ?? 100;
   const percentage = maxScore > 0 ? (totalAwarded / maxScore) * 100 : 0;
+  const studentName = (assessment as any).studentName || 'the student';
 
-  const strongQuestions = questions.filter((q) => (q.awardedMarks / (q.maxMarks || 1)) >= 0.8);
-  const weakQuestions = questions.filter((q) => (q.awardedMarks / (q.maxMarks || 1)) < 0.7);
+  const strongQuestions = questions.filter(
+    (q) => (q.marksAwarded / (q.question?.maxMarks || 1)) >= 0.8
+  );
+  const weakQuestions = questions.filter(
+    (q) => (q.marksAwarded / (q.question?.maxMarks || 1)) < 0.7
+  );
 
   const keyStrengths: string[] = [];
   if (strongQuestions.length > 0) {
     strongQuestions.slice(0, 3).forEach((q) => {
-      keyStrengths.push(`Solid grasp of Question ${q.questionNumber} concepts with thorough working.`);
+      const label = q.question?.fullLabel || `Q${q.question?.numberLabel}`;
+      keyStrengths.push(`Solid grasp of ${label} concepts with thorough working.`);
     });
   } else {
     keyStrengths.push('Demonstrated good effort and active attempt across all exam questions.');
@@ -45,12 +51,13 @@ export function generateStudentStudyPlan(assessment: AssessmentResult): Personal
 
   if (weakQuestions.length > 0) {
     weakQuestions.forEach((q) => {
-      const qTitle = q.questionText ? q.questionText.slice(0, 40) + '...' : `Question ${q.questionNumber}`;
+      const label = q.question?.fullLabel || `Q${q.question?.numberLabel}`;
+      const qTitle = q.question?.text ? q.question.text.slice(0, 40) + '...' : label;
       growthAreas.push(`Review foundational principles for: "${qTitle}"`);
-      
+
       recommendedTopics.push({
-        topic: `Concept in Q${q.questionNumber}`,
-        priority: (q.awardedMarks / (q.maxMarks || 1)) < 0.4 ? 'High' : 'Medium',
+        topic: `Concept in ${label}`,
+        priority: (q.marksAwarded / (q.question?.maxMarks || 1)) < 0.4 ? 'High' : 'Medium',
         suggestedAction: q.feedback || 'Re-derive core formulas and practice 2-3 similar textbook problems.',
       });
     });
@@ -65,7 +72,7 @@ export function generateStudentStudyPlan(assessment: AssessmentResult): Personal
 
   let summaryPraise = '';
   if (percentage >= 90) {
-    summaryPraise = `Outstanding performance by ${assessment.studentName || 'the student'}! Excellent accuracy and methodical problem solving.`;
+    summaryPraise = `Outstanding performance by ${studentName}! Excellent accuracy and methodical problem solving.`;
   } else if (percentage >= 75) {
     summaryPraise = `Very strong showing with consistent problem setup. Targeted revisions on few items will solidify full mastery.`;
   } else if (percentage >= 60) {
